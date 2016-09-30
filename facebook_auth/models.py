@@ -1,5 +1,4 @@
 import collections
-from contextlib import contextmanager
 import json
 import logging
 from datetime import timedelta
@@ -24,6 +23,10 @@ from facepy import exceptions
 from facebook_auth import forms
 from facebook_auth import utils
 from facebook_auth.facepy_wrapper.utils import TokenParsingError
+
+from social_wifi_statistics import models as statistics_models
+from socialwifi_branding import context_managers
+
 
 logger = logging.getLogger(__name__)
 
@@ -135,17 +138,6 @@ class UserTokenManager(object):
         UserToken.objects.filter(token=token).update(deleted=True)
 
 
-@contextmanager
-def branded_facebook_application(brand):
-    current_id = settings.FACEBOOK_APP_ID
-    current_secret = settings.FACEBOOK_APP_SECRET
-    settings.FACEBOOK_APP_ID = brand.facebook_app_id
-    settings.FACEBOOK_APP_SECRET = brand.facebook_app_secret
-    yield
-    settings.FACEBOOK_APP_ID = current_id
-    settings.FACEBOOK_APP_SECRET = current_secret
-
-
 class FacebookTokenManager(object):
     DEBUG_ALL_USER_TOKENS_PERIOD = getattr(settings, 'FACEBOOK_AUTH_DEBUG_ALL_USER_TOKENS_PERIOD', timedelta(minutes=5))
     TokenInfo = collections.namedtuple('TokenInfo',
@@ -174,12 +166,12 @@ class FacebookTokenManager(object):
     def debug_token(self, token):
         try:
             brand = self._get_brand(token)
-        except:
+        except (UserToken.DoesNotExist, auth_models.User.DoesNotExist, statistics_models.UserActivity.DoesNotExist):
             brand = None
         logger.warning(str(brand))
 
         if brand and not brand.is_default:
-            with branded_facebook_application(brand):
+            with context_managers.branded_facebook_application(brand):
                 return self._debug_token(token)
         else:
             return self._debug_token(token)
@@ -197,11 +189,9 @@ class FacebookTokenManager(object):
                                       {'errors': parsed_response.errors})
 
     def _get_brand(self, token):
-        from social_wifi_statistics.models import UserActivity
-        from django.contrib.auth.models import User
         user_token = UserToken.objects.get(token=token)
-        user = User.objects.get(username=user_token.provider_user_id)
-        session = UserActivity.objects.filter(user=user, activity_type='login').latest('activity_date')
+        user = auth_models.User.objects.get(username=user_token.provider_user_id)
+        session = statistics_models.UserActivity.objects.filter(user=user, activity_type='login').latest('activity_date')
         return session.place.partner.current_brand
 
     def _update_scope(self, data):
