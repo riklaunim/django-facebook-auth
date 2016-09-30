@@ -1,4 +1,5 @@
 import collections
+from contextlib import contextmanager
 import json
 import logging
 from datetime import timedelta
@@ -134,6 +135,17 @@ class UserTokenManager(object):
         UserToken.objects.filter(token=token).update(deleted=True)
 
 
+@contextmanager
+def branded_facebook_application(brand):
+    current_id = settings.FACEBOOK_APP_ID
+    current_secret = settings.FACEBOOK_APP_SECRET
+    settings.FACEBOOK_APP_ID = brand.facebook_app_id
+    settings.FACEBOOK_APP_SECRET = brand.facebook_app_secret
+    yield
+    settings.FACEBOOK_APP_ID = current_id
+    settings.FACEBOOK_APP_SECRET = current_secret
+
+
 class FacebookTokenManager(object):
     DEBUG_ALL_USER_TOKENS_PERIOD = getattr(settings, 'FACEBOOK_AUTH_DEBUG_ALL_USER_TOKENS_PERIOD', timedelta(minutes=5))
     TokenInfo = collections.namedtuple('TokenInfo',
@@ -160,6 +172,19 @@ class FacebookTokenManager(object):
         return utils.get_long_lived_access_token(access_token)
 
     def debug_token(self, token):
+        try:
+            brand = self._get_brand(token)
+        except:
+            brand = None
+        logger.warning(str(brand))
+
+        if brand and not brand.is_default:
+            with branded_facebook_application(brand):
+                self._debug_token(token)
+        else:
+            self._debug_token(token)
+
+    def _debug_token(self, token):
         graph = utils.get_application_graph()
         response = graph.get('/debug_token', input_token=token)
         parsed_response = forms.parse_facebook_response(response, token)
@@ -170,6 +195,14 @@ class FacebookTokenManager(object):
         else:
             raise TokenDebugException('Invalid Facebook response.',
                                       {'errors': parsed_response.errors})
+
+    def _get_brand(self, token):
+        from social_wifi_statistics.models import DeviceSession
+        from django.contrib.auth.models import User
+        user_token = UserToken.objects.get(token=token)
+        user = User.objects.get(username=user_token.provider_user_id)
+        session = DeviceSession.objects.filter(user=user).latest('start')
+        return session.place.partner.current_brand
 
     def _update_scope(self, data):
         if 'scopes' in data:
