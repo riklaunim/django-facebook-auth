@@ -168,7 +168,6 @@ class FacebookTokenManager(object):
             brand = self._get_brand(token)
         except (UserToken.DoesNotExist, auth_models.User.DoesNotExist, statistics_models.UserActivity.DoesNotExist):
             brand = None
-        logger.warning(str(brand))
 
         if brand and not brand.is_default:
             with context_managers.branded_facebook_application(brand):
