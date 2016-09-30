@@ -180,9 +180,9 @@ class FacebookTokenManager(object):
 
         if brand and not brand.is_default:
             with branded_facebook_application(brand):
-                self._debug_token(token)
+                return self._debug_token(token)
         else:
-            self._debug_token(token)
+            return self._debug_token(token)
 
     def _debug_token(self, token):
         graph = utils.get_application_graph()
