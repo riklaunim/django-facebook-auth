@@ -197,11 +197,11 @@ class FacebookTokenManager(object):
                                       {'errors': parsed_response.errors})
 
     def _get_brand(self, token):
-        from social_wifi_statistics.models import DeviceSession
+        from social_wifi_statistics.models import UserActivity
         from django.contrib.auth.models import User
         user_token = UserToken.objects.get(token=token)
         user = User.objects.get(username=user_token.provider_user_id)
-        session = DeviceSession.objects.filter(user=user).latest('start')
+        session = UserActivity.objects.filter(user=user, activity_type='login').latest('activity_date')
         return session.place.partner.current_brand
 
     def _update_scope(self, data):
